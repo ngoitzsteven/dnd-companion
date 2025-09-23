@@ -7,34 +7,52 @@ import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function LoginForm() {
+export function SignupForm() {
   const supabase = useSupabaseClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
+  const redirectTo = searchParams.get("redirectTo") ?? "/login";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     startTransition(async () => {
-      setError(null);
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      setMessage(null);
+
+      if (password !== confirmPassword) {
+        setStatus("error");
+        setMessage("Passwords do not match.");
+        return;
+      }
+
+      const { error } = await supabase.auth.signUp({
         email,
         password
       });
 
-      if (authError) {
-        setError(authError.message);
+      if (error) {
+        setStatus("error");
+        setMessage(error.message);
         return;
       }
 
-      router.push(redirectTo);
-      router.refresh();
+      setStatus("success");
+      setMessage("Check your inbox to confirm your email. Once confirmed, you can sign in.");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
+
+      // Give the user a moment to read the success message before routing.
+      setTimeout(() => {
+        router.push(redirectTo);
+      }, 1500);
     });
   };
 
@@ -60,15 +78,32 @@ export function LoginForm() {
         <Input
           id="password"
           type="password"
-          autoComplete="current-password"
+          autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
         />
       </div>
-      {error && <p className="text-sm text-rose-400">{error}</p>}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200" htmlFor="confirm-password">
+          Confirm password
+        </label>
+        <Input
+          id="confirm-password"
+          type="password"
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          required
+        />
+      </div>
+      {message && (
+        <p className={`text-sm ${status === "success" ? "text-emerald-400" : "text-rose-400"}`}>
+          {message}
+        </p>
+      )}
       <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? "Signing in..." : "Sign in"}
+        {isPending ? "Creating account..." : "Create account"}
       </Button>
     </form>
   );
