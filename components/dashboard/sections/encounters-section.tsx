@@ -11,7 +11,7 @@ import { postJson } from "@/lib/api";
 import type { Encounter } from "@/types/database";
 
 import { EmptyStateMessage } from "../empty-state-message";
-import type { EncounterWithMonsters } from "@/components/dashboard/types";
+import type { EncounterWithMonsters } from "@/lib/dashboard/types";
 
 import { selectClassName } from "./shared";
 
