@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSupabaseClient } from "@supabase/auth-helpers-react";
 
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { NotesSection } from "./notes-section";
+import { EmptyStateMessage, formatDateLabel, postJson, selectClassName } from "./shared";
 import type { CampaignMember, Encounter, Database } from "@/types/database";
 import type {
   CampaignCreateCardProps,
@@ -19,16 +21,12 @@ import type {
   EncountersSectionProps,
   EncounterWithMonsters,
   LocationsSectionProps,
-  NotesSectionProps,
   NpcsSectionProps,
   PlayerCharactersSectionProps,
   QuestsSectionProps,
   QuickFactCardProps,
-  StatCardProps,
-  EmptyStateMessageProps
+  StatCardProps
 } from "./types";
-
-const selectClassName = "w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50";
 
 export function DashboardShell({
   campaigns,
@@ -117,6 +115,15 @@ export function DashboardShell({
     }
   };
 
+  const handleResourceMutated = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  const locationLookup = useMemo(
+    () => new Map(locations.map((location) => [location.id, location.name] as const)),
+    [locations]
+  );
+
   const selectedCampaign = selectedCampaignId
     ? campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null
     : campaigns[0] ?? null;
@@ -124,9 +131,6 @@ export function DashboardShell({
   const activeQuestCount = quests.filter((quest) => quest.status !== "completed").length;
   const activeEncounterCount = encounters.filter((encounter) => encounter.status !== "completed").length;
 
-  const recentNotes = [...notes]
-    .sort((a, b) => getTime(b.created_at) - getTime(a.created_at))
-    .slice(0, 4);
   const recentEncounters = [...encounters]
     .sort((a, b) => getTime(b.created_at) - getTime(a.created_at))
     .slice(0, 4);
@@ -191,8 +195,8 @@ export function DashboardShell({
     );
   } else {
     mainContent = (
-      <div className="space-y-10">
-        <header className="space-y-2">
+      <div className="space-y-5">
+        <header className="space-y-3">
           <p className="text-sm uppercase tracking-[0.15em] text-brand-light">Campaign overview</p>
           <h1 className="text-3xl font-semibold text-white">
             {selectedCampaign ? selectedCampaign.name : "Select a campaign"}
@@ -205,8 +209,6 @@ export function DashboardShell({
           ) : null}
         </header>
 
-        {createCampaignSection}
-
         <section className="grid gap-4 lg:grid-cols-3">
           <StatCard label="Active quests" value={activeQuestCount} description="Keep your party aligned on what comes next." />
           <StatCard label="Active encounters" value={activeEncounterCount} description="Prep combat scenarios ready to deploy." />
@@ -218,26 +220,40 @@ export function DashboardShell({
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Recent session notes</CardTitle>
-                <CardDescription>The last four logs help you pick up where you left off.</CardDescription>
-              </div>
-            </CardHeader>
-            <ul className="space-y-3 text-sm text-slate-300">
-              {recentNotes.length === 0 ? (
-                <EmptyStateMessage message="Record your first recap to see it here." />
-              ) : (
-                recentNotes.map((note) => (
-                  <li key={note.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                    <p className="text-sm font-medium text-slate-100">{formatDateLabel(note.session_date)}</p>
-                    <p className="text-sm text-slate-400">{truncate(note.content, 140)}</p>
-                  </li>
-                ))
-              )}
-            </ul>
-          </Card>
+            {selectedCampaignId ? (
+
+              <NotesSection
+
+                campaignId={selectedCampaignId}
+
+                canManage={canManageSelectedCampaign}
+
+                notes={notes}
+
+                locations={locations}
+
+                locationLookup={locationLookup}
+
+                onMutated={handleResourceMutated}
+
+              />
+
+            ) : (
+
+              <Card className="bg-slate-900/60">
+
+                <CardHeader>
+
+                  <CardTitle>Session notes</CardTitle>
+
+                  <CardDescription>Select a campaign to log and review notes.</CardDescription>
+
+                </CardHeader>
+
+              </Card>
+
+            )}
+
 
           <Card>
             <CardHeader>
@@ -358,13 +374,13 @@ export function DashboardShell({
           <CampaignResourceGrid
             campaignId={selectedCampaignId}
             canManage={canManageSelectedCampaign}
-            notes={notes}
             pcs={pcs}
             npcs={npcs}
             quests={quests}
             locations={locations}
+            locationLookup={locationLookup}
             encounters={encounters}
-            onMutated={() => router.refresh()}
+            onMutated={handleResourceMutated}
           />
         ) : null}
       </div>
@@ -397,37 +413,57 @@ export function DashboardShell({
               You&apos;ll see your campaigns listed here once you create one.
             </p>
           ) : (
-            <ul className="space-y-1">
-              {campaigns.map((campaign) => {
-                const isActive = campaign.id === selectedCampaignId;
-                const campaignInitial = campaign.name ? campaign.name.charAt(0).toUpperCase() : "?";
+            <div className="space-y-3">
+              <ul className="space-y-1">
+                {campaigns.map((campaign) => {
+                  const isActive = campaign.id === selectedCampaignId;
+                  const campaignInitial = campaign.name ? campaign.name.charAt(0).toUpperCase() : "?";
 
-                return (
-                  <li key={campaign.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleCampaignSelect(campaign.id)}
-                      aria-current={isActive ? "page" : undefined}
-                      title={campaign.name}
-                      className={cn(
-                        "w-full rounded-md px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500",
-                        isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800",
-                        isSidebarOpen ? "flex flex-col items-start gap-1" : "flex h-12 items-center justify-center px-0"
-                      )}
-                    >
-                      {isSidebarOpen ? (
-                        <>
-                          <span className="block w-full truncate">{campaign.name}</span>
-                          <span className="text-xs text-slate-500">{formatRole(campaign.membership_role)}</span>
-                        </>
-                      ) : (
-                        <span className="text-base">{campaignInitial}</span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  return (
+                    <li key={campaign.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleCampaignSelect(campaign.id)}
+                        aria-current={isActive ? "page" : undefined}
+                        title={campaign.name}
+                        className={cn(
+                          "w-full rounded-md px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500",
+                          isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800",
+                          isSidebarOpen ? "flex flex-col items-start gap-1" : "flex h-12 items-center justify-center px-0"
+                        )}
+                      >
+                        {isSidebarOpen ? (
+                          <>
+                            <span className="block w-full truncate">{campaign.name}</span>
+                            <span className="text-xs text-slate-500">{formatRole(campaign.membership_role)}</span>
+                          </>
+                        ) : (
+                          <span className="text-base">{campaignInitial}</span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {isSidebarOpen ? (
+                <div className="pt-2">{createCampaignSection}</div>
+              ) : (
+                <div className="flex justify-center pt-2">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsSidebarOpen(true);
+                      setIsCampaignFormOpen(true);
+                    }}
+                    aria-label="Create campaign"
+                  >
+                    +
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </aside>
@@ -465,7 +501,7 @@ export function DashboardShell({
         </div>
 
         <main className="flex-1 overflow-y-auto px-4 py-10 sm:px-6">
-          <div className="mx-auto w-full max-w-6xl">{mainContent}</div>
+          <div className="mx-auto w-full max-w-[96rem]">{mainContent}</div>
         </main>
       </div>
     </div>
@@ -475,26 +511,16 @@ export function DashboardShell({
 function CampaignResourceGrid({
   campaignId,
   canManage,
-  notes,
   pcs,
   npcs,
   quests,
   locations,
+  locationLookup,
   encounters,
   onMutated
 }: CampaignResourceGridProps) {
-  const locationLookup = new Map(locations.map((location) => [location.id, location.name] as const));
-
   return (
     <div className="space-y-8">
-      <NotesSection
-        campaignId={campaignId}
-        canManage={canManage}
-        notes={notes}
-        locations={locations}
-        locationLookup={locationLookup}
-        onMutated={onMutated}
-      />
       <div className="grid gap-6 lg:grid-cols-2">
         <PlayerCharactersSection
           campaignId={campaignId}
@@ -534,141 +560,6 @@ function CampaignResourceGrid({
         onMutated={onMutated}
       />
     </div>
-  );
-}
-
-function NotesSection({
-  campaignId,
-  canManage,
-  notes,
-  locations,
-  locationLookup,
-  onMutated
-}: NotesSectionProps) {
-  const [sessionDate, setSessionDate] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [content, setContent] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!content.trim()) {
-      setError("Add a quick summary before saving.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/notes`, {
-        content: content.trim(),
-        session_date: sessionDate || undefined,
-        location_id: locationId ? locationId : null
-      });
-
-      setSessionDate("");
-      setLocationId("");
-      setContent("");
-      onMutated();
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : "Unable to save note");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Session notes</CardTitle>
-          <CardDescription>Document what happened and what comes next.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="note-session-date" className="text-xs uppercase tracking-wide text-slate-400">
-                  Session date
-                </label>
-                <Input
-                  id="note-session-date"
-                  type="date"
-                  value={sessionDate}
-                  onChange={(event) => setSessionDate(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="note-location" className="text-xs uppercase tracking-wide text-slate-400">
-                  Location (optional)
-                </label>
-                <select
-                  id="note-location"
-                  className={selectClassName}
-                  value={locationId}
-                  onChange={(event) => setLocationId(event.target.value)}
-                  disabled={isSubmitting}
-                >
-                  <option value="">No location</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="note-content" className="text-xs uppercase tracking-wide text-slate-400">
-                Session recap
-              </label>
-              <Textarea
-                id="note-content"
-                placeholder="Summarize key events, discoveries, and hooks."
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save note"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add notes.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {notes.length === 0 ? (
-            <EmptyStateMessage message="No notes yet?log your first recap above." />
-          ) : (
-            notes.map((note) => (
-              <div key={note.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-100">{formatDateLabel(note.session_date)}</p>
-                  {note.location_id ? (
-                    <span className="text-xs uppercase tracking-wide text-slate-500">
-                      {locationLookup.get(note.location_id) ?? "Unknown location"}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="whitespace-pre-line text-sm text-slate-300">{note.content}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -1442,38 +1333,10 @@ function CampaignCreateCard({
   );
 }
 
-async function postJson<T = unknown>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    let message = "Unexpected error";
-
-    try {
-      const data = await response.json();
-      if (data && typeof data.error === "string") {
-        message = data.error;
-      }
-    } catch {
-      // ignore body parsing errors
-    }
-
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
-}
-
-
 function StatCard({ label, value, description }: StatCardProps) {
   return (
     <Card>
-      <CardHeader className="space-y-1">
+      <CardHeader className="space-y-1 gap-5">
         <CardTitle className="text-sm font-medium uppercase tracking-wide text-slate-400">{label}</CardTitle>
         <p className="text-3xl font-semibold text-white">{value}</p>
         <CardDescription>{description}</CardDescription>
@@ -1493,34 +1356,11 @@ function QuickFactCard({ label, value }: QuickFactCardProps) {
   );
 }
 
-function EmptyStateMessage({ message }: EmptyStateMessageProps) {
-  return (
-    <p className="rounded-lg border border-dashed border-slate-800 bg-slate-900/40 p-4 text-center text-sm text-slate-500">
-      {message}
-    </p>
-  );
-}
-
 function truncate(value: string, maxLength: number) {
   if (value.length <= maxLength) {
     return value;
   }
   return `${value.slice(0, maxLength).trimEnd()}...`;
-}
-
-function formatDateLabel(value: string | null) {
-  if (!value) {
-    return "Date pending";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  });
 }
 
 function formatRole(role: CampaignMember["role"]) {

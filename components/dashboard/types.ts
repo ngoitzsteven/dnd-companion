@@ -42,11 +42,11 @@ export interface DashboardShellProps {
 export interface CampaignResourceGridProps {
   campaignId: string;
   canManage: boolean;
-  notes: Note[];
   pcs: Pc[];
   npcs: Npc[];
   quests: Quest[];
   locations: Location[];
+  locationLookup: Map<string, string>;
   encounters: EncounterWithMonsters[];
   onMutated: () => void;
 }

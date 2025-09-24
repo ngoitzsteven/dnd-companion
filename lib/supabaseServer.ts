@@ -15,7 +15,7 @@ import type { Database } from "@/types/database";
 
 
 export const getServerSupabaseClient = async () => {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   return createServerComponentClient<Database>({
 
@@ -28,7 +28,7 @@ export const getServerSupabaseClient = async () => {
 
 
 export const getRouteHandlerSupabaseClient = async () => {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   return createRouteHandlerClient<Database>({
 
