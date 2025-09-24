@@ -442,7 +442,7 @@ export function DashboardShell({
                 <div className="flex justify-center pt-2">
                   <Button
                     type="button"
-                    size="icon"
+                    size="sm"
                     variant="ghost"
                     onClick={() => {
                       setIsSidebarOpen(true);

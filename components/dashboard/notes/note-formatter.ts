@@ -1,4 +1,10 @@
-import type { NoteFormatterResult } from "./types";
+import { HtmlSanitizer } from "./utils/sanitizer";
+
+export interface NoteFormatterResult {
+  text: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
 
 export class NoteFormatter {
   static wrapWithMarkers(
@@ -45,9 +51,10 @@ export class NoteFormatter {
     const formatted = selected
       .split(/\r?\n/)
       .map((line) => {
-        const cleaned = line.replace(/^[-*\u2022]\s+/, "");
-        return `- ${cleaned || ""}`;
+        const cleaned = line.replace(/^[-*\u2022]\s+/, "").trim();
+        return cleaned ? `- ${cleaned}` : null;
       })
+      .filter(Boolean)
       .join("\n");
 
     const nextValue = value.slice(0, selectionStart) + formatted + value.slice(selectionEnd);
@@ -75,7 +82,7 @@ export class NoteFormatter {
           inList = true;
         }
         const text = trimmed.replace(/^[-*\u2022]\s+/, "");
-        html += `<li>${this.applyInlineFormatting(text)}</li>`;
+        html += `<li>${NoteFormatter.applyInlineFormatting(text)}</li>`;
       } else {
         if (inList) {
           html += "</ul>";
@@ -84,7 +91,7 @@ export class NoteFormatter {
         if (trimmed === "") {
           html += "<br />";
         } else {
-          html += `<p>${this.applyInlineFormatting(line)}</p>`;
+          html += `<p>${NoteFormatter.applyInlineFormatting(line)}</p>`;
         }
       }
     });
@@ -93,16 +100,22 @@ export class NoteFormatter {
       html += "</ul>";
     }
 
-    return html || "<p></p>";
+    const sanitized = HtmlSanitizer.sanitize(html || "<p></p>");
+    return sanitized;
   }
 
   private static applyInlineFormatting(value: string): string {
-    let formatted = this.escapeHtml(value);
-    formatted = formatted.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    formatted = formatted.replace(/__(.+?)__/g, "<u>$1</u>");
-    formatted = formatted.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
-    formatted = formatted.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, "<em>$1</em>");
-    return formatted;
+    try {
+      let formatted = this.escapeHtml(value);
+      formatted = formatted.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      formatted = formatted.replace(/__(.+?)__/g, "<u>$1</u>");
+      // Use simpler regex patterns for better compatibility
+      formatted = formatted.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      formatted = formatted.replace(/_([^_]+)_/g, "<em>$1</em>");
+      return formatted;
+    } catch {
+      return this.escapeHtml(value);
+    }
   }
 
   private static escapeHtml(value: string): string {

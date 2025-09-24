@@ -1,0 +1,6 @@
+export const NOTES_CONFIG = {
+  MAX_VISIBLE_NOTES: 4,
+  DEFAULT_LEVEL: 1,
+  MIN_LEVEL: 1,
+  MAX_LEVEL: 20
+} as const;

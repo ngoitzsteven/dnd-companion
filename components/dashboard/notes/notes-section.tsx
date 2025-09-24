@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyStateMessage } from "../shared";
-import { NotesService } from "./notes-service";
 import { NoteList } from "./note-list";
 import { NoteModal } from "./note-modal";
+import { useNotes } from "./hooks/use-notes";
+import { NotesService } from "./notes-service";
 import type { NotesProps, NotesState } from "./types";
-import type { Note } from "@/types/database";
+import type { Note } from "./domain/note";
 
 export function NotesSection({
   campaignId,
@@ -18,7 +19,7 @@ export function NotesSection({
   locationLookup,
   onMutated
 }: NotesProps) {
-  const notesService = new NotesService(campaignId);
+  const { notesService, sortedNotes } = useNotes(campaignId, notes);
   
   const [state, setState] = useState<NotesState>({
     sessionDate: NotesService.getToday(),
@@ -31,8 +32,6 @@ export function NotesSection({
     deletingNoteId: null,
     showAllNotes: false
   });
-
-  const sortedNotes = useMemo(() => NotesService.sortNotesByDate(notes), [notes]);
 
   const openCreateModal = () => {
     setState(prev => ({

@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { formatDateLabel } from "../shared";
 import { NoteFormatter } from "./note-formatter";
-import type { Note } from "@/types/database";
+import { HtmlSanitizer } from "./utils/sanitizer";
+import { NOTES_CONFIG } from "./constants";
+import type { Note } from "./domain/note";
 
 interface NoteListProps {
   notes: Note[];
@@ -24,7 +26,7 @@ export function NoteList({
   onDelete,
   onToggleShowAll
 }: NoteListProps) {
-  const displayedNotes = showAllNotes ? notes : notes.slice(0, 4);
+  const displayedNotes = showAllNotes ? notes : notes.slice(0, NOTES_CONFIG.MAX_VISIBLE_NOTES);
 
   return (
     <>
@@ -59,11 +61,19 @@ export function NoteList({
           </div>
           <div
             className="space-y-2 text-sm text-slate-300"
-            dangerouslySetInnerHTML={{ __html: NoteFormatter.formatContent(note.content) }}
+            dangerouslySetInnerHTML={{ 
+              __html: (() => {
+                try {
+                  return HtmlSanitizer.sanitize(NoteFormatter.formatContent(note.content));
+                } catch {
+                  return '<p>Error displaying note content</p>';
+                }
+              })()
+            }}
           />
         </div>
       ))}
-      {notes.length > 4 && (
+      {notes.length > NOTES_CONFIG.MAX_VISIBLE_NOTES && (
         <div className="text-center">
           <Button 
             type="button" 
@@ -72,7 +82,7 @@ export function NoteList({
             onClick={onToggleShowAll}
             className="text-slate-400 hover:text-slate-300"
           >
-            {showAllNotes ? "Show less" : `Show ${notes.length - 4} more notes`}
+            {showAllNotes ? "Show less" : `Show ${notes.length - NOTES_CONFIG.MAX_VISIBLE_NOTES} more notes`}
           </Button>
         </div>
       )}

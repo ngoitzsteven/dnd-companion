@@ -4,8 +4,9 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { selectClassName } from "../shared";
-import { NoteFormatter } from "./note-formatter";
-import type { Location, Note } from "@/types/database";
+import { NoteFormatter, type NoteFormatterResult } from "./note-formatter";
+import type { Location } from "@/types/database";
+import type { Note } from "./domain/note";
 
 interface NoteModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export function NoteModal({
     : "Capture key events, discoveries, and hooks.";
   const submitLabel = isSubmitting ? "Saving..." : isEditing ? "Update note" : "Save note";
 
-  const applyFormatter = (formatter: (value: string, selectionStart: number, selectionEnd: number) => any) => {
+  const applyFormatter = (formatter: (value: string, selectionStart: number, selectionEnd: number) => NoteFormatterResult) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 

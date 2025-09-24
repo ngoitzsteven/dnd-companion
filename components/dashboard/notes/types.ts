@@ -1,4 +1,5 @@
-import type { Note, Location } from "@/types/database";
+import type { Location } from "@/types/database";
+import type { Note } from "./domain/note";
 
 export interface NotesState {
   sessionDate: string;
@@ -21,8 +22,3 @@ export interface NotesProps {
   onMutated: () => void;
 }
 
-export interface NoteFormatterResult {
-  text: string;
-  selectionStart: number;
-  selectionEnd: number;
-}
