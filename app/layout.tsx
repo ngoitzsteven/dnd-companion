@@ -22,7 +22,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" className="bg-slate-950">
-      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100`}>
+      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100`} suppressHydrationWarning>
         <SupabaseProvider initialSession={session}>{children}</SupabaseProvider>
       </body>
     </html>

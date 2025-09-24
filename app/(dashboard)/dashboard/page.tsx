@@ -272,7 +272,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         .from("campaign_members")
 
-        .select("*, profile:profiles(id, display_name, email)")
+        .select("*, profile:profiles!campaign_members_profile_id_fkey(id, display_name, email)")
 
         .eq("campaign_id", selectedCampaignId)
 
@@ -354,7 +354,7 @@ function formatMembershipErrorMessage(error: PostgrestError) {
 
   if (error.message.includes("schema cache")) {
 
-    return "We couldn’t find the campaign tables in your Supabase project. Run `supabase db push` to apply the latest schema, then refresh.";
+    return "We couldn't find the campaign tables in your Supabase project. Run `supabase db push` to apply the latest schema, then refresh.";
 
   }
 
@@ -368,7 +368,7 @@ function formatMembershipErrorMessage(error: PostgrestError) {
 
 
 
-  return error.message ?? "We couldn’t load your campaign memberships. Please try again.";
+  return error.message ?? "We couldn't load your campaign memberships. Please try again.";
 
 }
 

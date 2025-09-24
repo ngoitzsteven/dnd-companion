@@ -74,6 +74,12 @@ as $$
     where campaign_id = target_campaign_id
       and profile_id = auth.uid()
       and status = 'active'
+  )
+  or exists (
+    select 1
+    from public.campaigns c
+    where c.id = target_campaign_id
+      and c.owner = auth.uid()
   );
 $$;
 create or replace function public.is_campaign_manager(target_campaign_id uuid)
@@ -90,6 +96,12 @@ as $$
       and profile_id = auth.uid()
       and role in ('owner', 'co_dm')
       and status = 'active'
+  )
+  or exists (
+    select 1
+    from public.campaigns c
+    where c.id = target_campaign_id
+      and c.owner = auth.uid()
   );
 $$;
 create or replace function public.is_campaign_owner(target_campaign_id uuid)
@@ -106,6 +118,12 @@ as $$
       and profile_id = auth.uid()
       and role = 'owner'
       and status = 'active'
+  )
+  or exists (
+    select 1
+    from public.campaigns c
+    where c.id = target_campaign_id
+      and c.owner = auth.uid()
   );
 $$;
 -- Locations within a campaign
@@ -435,7 +453,10 @@ create policy "Insert profile for self" on public.profiles
     for insert with check (auth.uid() = id);
 -- Campaign policies tied to membership
 create policy "Members can view campaign" on public.campaigns
-    for select using (public.is_campaign_member(campaigns.id));
+    for select using (
+        public.is_campaign_member(campaigns.id)
+        or campaigns.owner = auth.uid()
+    );
 create policy "Authenticated can create campaign" on public.campaigns
     for insert with check (auth.uid() = owner);
 create policy "Managers can update campaign" on public.campaigns
