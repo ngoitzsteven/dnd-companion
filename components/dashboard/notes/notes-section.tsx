@@ -20,7 +20,6 @@ export function NotesSection({
   onMutated
 }: NotesProps) {
   const { notesService, sortedNotes } = useNotes(campaignId, notes);
-  
   const [state, setState] = useState<NotesState>({
     sessionDate: NotesService.getToday(),
     locationId: "",

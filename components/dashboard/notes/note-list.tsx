@@ -59,18 +59,22 @@ export function NoteList({
               </div>
             ) : null}
           </div>
-          <div
-            className="space-y-2 text-sm text-slate-300"
-            dangerouslySetInnerHTML={{ 
-              __html: (() => {
-                try {
-                  return HtmlSanitizer.sanitize(NoteFormatter.formatContent(note.content));
-                } catch {
-                  return '<p>Error displaying note content</p>';
-                }
-              })()
-            }}
-          />
+          {(() => {
+            try {
+              if (!note?.content) {
+                return <p className="text-slate-500">No content available</p>;
+              }
+              const sanitizedHtml = HtmlSanitizer.sanitize(NoteFormatter.formatContent(note.content));
+              return (
+                <div
+                  className="space-y-2 text-sm text-slate-300"
+                  dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                />
+              );
+            } catch (error) {
+              return <p className="text-rose-400">Error displaying note content</p>;
+            }
+          })()}
         </div>
       ))}
       {notes.length > NOTES_CONFIG.MAX_VISIBLE_NOTES && (

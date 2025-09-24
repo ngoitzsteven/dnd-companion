@@ -49,7 +49,6 @@ export function NoteModal({
     ? "Update your recap with the latest developments."
     : "Capture key events, discoveries, and hooks.";
   const submitLabel = isSubmitting ? "Saving..." : isEditing ? "Update note" : "Save note";
-
   const applyFormatter = (formatter: (value: string, selectionStart: number, selectionEnd: number) => NoteFormatterResult) => {
     const textarea = textareaRef.current;
     if (!textarea) return;

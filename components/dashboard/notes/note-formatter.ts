@@ -46,7 +46,6 @@ export class NoteFormatter {
         selectionEnd: cursor
       };
     }
-
     const selected = value.slice(selectionStart, selectionEnd);
     const formatted = selected
       .split(/\r?\n/)
@@ -76,14 +75,21 @@ export class NoteFormatter {
       const trimmed = line.trim();
       const isBullet = /^[-*\u2022]\s+/.test(trimmed);
 
+      // Helper to render a bullet list item
+      function renderBulletItem(text: string): string {
+        return `<li>${NoteFormatter.applyInlineFormatting(text)}</li>`;
+      }
+      
       if (isBullet) {
+        // Start a new list if not already in one
         if (!inList) {
           html += '<ul class="list-disc space-y-1 pl-5">';
           inList = true;
         }
         const text = trimmed.replace(/^[-*\u2022]\s+/, "");
-        html += `<li>${NoteFormatter.applyInlineFormatting(text)}</li>`;
+        html += renderBulletItem(text);
       } else {
+        // Close the list if ending bullet section
         if (inList) {
           html += "</ul>";
           inList = false;
@@ -100,8 +106,13 @@ export class NoteFormatter {
       html += "</ul>";
     }
 
-    const sanitized = HtmlSanitizer.sanitize(html || "<p></p>");
-    return sanitized;
+    try {
+      const sanitized = HtmlSanitizer.sanitize(html || "<p></p>");
+      return sanitized;
+    } catch (error) {
+      // Optionally log error or handle it as needed
+      return "<p>Error formatting content.</p>";
+    }
   }
 
   private static applyInlineFormatting(value: string): string {
