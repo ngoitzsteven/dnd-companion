@@ -380,9 +380,45 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
+      <div className="flex flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-[0.15em] text-brand-light">Dashboard</p>
+              <p className="truncate text-sm font-semibold text-white">
+                {selectedCampaign ? selectedCampaign.name : "No campaigns yet"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {logoutError ? (
+              <span className="text-xs text-rose-400" aria-live="polite">
+                {logoutError}
+              </span>
+            ) : null}
+            <Button variant="secondary" onClick={handleLogout} disabled={isLoggingOut}>
+              {isLoggingOut ? "Signing out..." : "Log out"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleSidebar}
+              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              className="h-9 w-9 p-0 text-lg text-slate-300"
+            >
+              {isSidebarOpen ? ">" : "<"}
+            </Button>
+          </div>
+        </div>
+        <main className="flex-1 overflow-y-auto px-4 py-10 sm:px-6">
+          <div className="mx-auto w-full max-w-[96rem]">{mainContent}</div>
+        </main>
+      </div>
+      
       <aside
         className={cn(
-          "flex min-h-screen flex-col border-r border-slate-800 bg-slate-950 transition-all duration-300 ease-in-out",
+          "flex min-h-screen flex-col border-l border-slate-800 bg-slate-950 transition-all duration-300 ease-in-out",
           isSidebarOpen ? "w-64" : "w-16"
         )}
       >
@@ -458,43 +494,6 @@ export function DashboardShell({
           )}
         </div>
       </aside>
-
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={toggleSidebar}
-              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-              className="h-9 w-9 p-0 text-lg text-slate-300"
-            >
-              {isSidebarOpen ? "<" : ">"}
-            </Button>
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.15em] text-brand-light">Dashboard</p>
-              <p className="truncate text-sm font-semibold text-white">
-                {selectedCampaign ? selectedCampaign.name : "No campaigns yet"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {logoutError ? (
-              <span className="text-xs text-rose-400" aria-live="polite">
-                {logoutError}
-              </span>
-            ) : null}
-            <Button variant="secondary" onClick={handleLogout} disabled={isLoggingOut}>
-              {isLoggingOut ? "Signing out..." : "Log out"}
-            </Button>
-          </div>
-        </div>
-
-        <main className="flex-1 overflow-y-auto px-4 py-10 sm:px-6">
-          <div className="mx-auto w-full max-w-[96rem]">{mainContent}</div>
-        </main>
-      </div>
     </div>
   );
 }
