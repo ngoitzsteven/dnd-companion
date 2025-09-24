@@ -10,14 +10,8 @@ export function EmptyStateMessage({ message }: EmptyStateMessageProps) {
   );
 }
 
-export async function postJson<T = unknown>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+async function requestJson<T = unknown>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
 
   if (!response.ok) {
     let message = "Unexpected error";
@@ -34,7 +28,41 @@ export async function postJson<T = unknown>(path: string, payload: unknown): Pro
     throw new Error(message);
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+export async function postJson<T = unknown>(path: string, payload: unknown): Promise<T> {
+  return requestJson<T>(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function patchJson<T = unknown>(path: string, payload: unknown): Promise<T> {
+  return requestJson<T>(path, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteJson<T = unknown>(path: string): Promise<T> {
+  return requestJson<T>(path, {
+    method: "DELETE"
+  });
 }
 
 export function formatDateLabel(value: string | null) {
