@@ -9,47 +9,26 @@ import { Input } from "@/components/ui/input";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { CampaignMember, Encounter, Database } from "@/types/database";
 import type {
-  Campaign,
-  CampaignMember,
-  Encounter,
-  EncounterMonster,
-  Location,
-  Note,
-  Npc,
-  Pc,
-  Profile,
-  Quest,
-  Database
-} from "@/types/database";
-
-interface CampaignWithRole extends Campaign {
-  membership_role: CampaignMember["role"];
-}
-
-interface CampaignMemberWithProfile extends CampaignMember {
-  profile: Pick<Profile, "id" | "display_name" | "email"> | null;
-}
-
-interface EncounterWithMonsters extends Encounter {
-  encounter_monsters: EncounterMonster[];
-}
+  CampaignCreateCardProps,
+  CampaignMemberWithProfile,
+  CampaignResourceGridProps,
+  CampaignWithRole,
+  DashboardShellProps,
+  EncountersSectionProps,
+  EncounterWithMonsters,
+  LocationsSectionProps,
+  NotesSectionProps,
+  NpcsSectionProps,
+  PlayerCharactersSectionProps,
+  QuestsSectionProps,
+  QuickFactCardProps,
+  StatCardProps,
+  EmptyStateMessageProps
+} from "./types";
 
 const selectClassName = "w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50";
-
-interface DashboardShellProps {
-  campaigns: CampaignWithRole[];
-  selectedCampaignId: string | null;
-  selectedCampaignRole: CampaignMember["role"] | null;
-  members: CampaignMemberWithProfile[];
-  locations: Location[];
-  npcs: Npc[];
-  quests: Quest[];
-  notes: Note[];
-  pcs: Pc[];
-  encounters: EncounterWithMonsters[];
-  errorMessage?: string | null;
-}
 
 export function DashboardShell({
   campaigns,
@@ -493,23 +472,6 @@ export function DashboardShell({
   );
 }
 
-interface StatCardProps {
-  label: string;
-  value: number;
-  description: string;
-}
-interface CampaignResourceGridProps {
-  campaignId: string;
-  canManage: boolean;
-  notes: Note[];
-  pcs: Pc[];
-  npcs: Npc[];
-  quests: Quest[];
-  locations: Location[];
-  encounters: EncounterWithMonsters[];
-  onMutated: () => void;
-}
-
 function CampaignResourceGrid({
   campaignId,
   canManage,
@@ -573,15 +535,6 @@ function CampaignResourceGrid({
       />
     </div>
   );
-}
-
-interface NotesSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  notes: Note[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
 }
 
 function NotesSection({
@@ -717,13 +670,6 @@ function NotesSection({
       </div>
     </Card>
   );
-}
-
-interface PlayerCharactersSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  pcs: Pc[];
-  onMutated: () => void;
 }
 
 function PlayerCharactersSection({ campaignId, canManage, pcs, onMutated }: PlayerCharactersSectionProps) {
@@ -875,15 +821,6 @@ function PlayerCharactersSection({ campaignId, canManage, pcs, onMutated }: Play
   );
 }
 
-interface NpcsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  npcs: Npc[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
-}
-
 function NpcsSection({ campaignId, canManage, npcs, locations, locationLookup, onMutated }: NpcsSectionProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -1026,13 +963,6 @@ function NpcsSection({ campaignId, canManage, npcs, locations, locationLookup, o
   );
 }
 
-interface LocationsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  locations: Location[];
-  onMutated: () => void;
-}
-
 function LocationsSection({ campaignId, canManage, locations, onMutated }: LocationsSectionProps) {
   const [name, setName] = useState("");
   const [typeValue, setTypeValue] = useState("");
@@ -1150,15 +1080,6 @@ function LocationsSection({ campaignId, canManage, locations, onMutated }: Locat
       </div>
     </Card>
   );
-}
-
-interface QuestsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  quests: Quest[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
 }
 
 function QuestsSection({ campaignId, canManage, quests, locations, locationLookup, onMutated }: QuestsSectionProps) {
@@ -1313,13 +1234,6 @@ function QuestsSection({ campaignId, canManage, quests, locations, locationLooku
   );
 }
 
-interface EncountersSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  encounters: EncounterWithMonsters[];
-  onMutated: () => void;
-}
-
 function EncountersSection({ campaignId, canManage, encounters, onMutated }: EncountersSectionProps) {
   const [name, setName] = useState("");
   const [summary, setSummary] = useState("");
@@ -1471,17 +1385,6 @@ function EncountersSection({ campaignId, canManage, encounters, onMutated }: Enc
   );
 }
 
-interface CampaignCreateCardProps {
-  isOpen: boolean;
-  hasCampaigns: boolean;
-  name: string;
-  onNameChange: (value: string) => void;
-  onToggle: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  isSubmitting: boolean;
-  error: string | null;
-}
-
 function CampaignCreateCard({
   isOpen,
   hasCampaigns,
@@ -1579,11 +1482,6 @@ function StatCard({ label, value, description }: StatCardProps) {
   );
 }
 
-interface QuickFactCardProps {
-  label: string;
-  value: number;
-}
-
 function QuickFactCard({ label, value }: QuickFactCardProps) {
   return (
     <Card className="bg-slate-900/50">
@@ -1593,10 +1491,6 @@ function QuickFactCard({ label, value }: QuickFactCardProps) {
       </CardHeader>
     </Card>
   );
-}
-
-interface EmptyStateMessageProps {
-  message: string;
 }
 
 function EmptyStateMessage({ message }: EmptyStateMessageProps) {
