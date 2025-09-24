@@ -10,8 +10,6 @@ create table if not exists public.profiles (
     created_at timestamptz default timezone('utc'::text, now()) not null,
     email citext
 );
-alter table public.profiles
-    add column if not exists email citext;
 create unique index if not exists profiles_email_unique
     on public.profiles (email);
 -- Campaigns owned by a specific user
@@ -232,9 +230,200 @@ alter table public.pcs enable row level security;
 alter table public.encounters enable row level security;
 alter table public.encounter_monsters enable row level security;
 alter table public.waitlist_emails enable row level security;
+-- Ensure updated_at columns for auditing
+alter table public.profiles
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.campaigns
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.campaign_members
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.locations
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.npcs
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.quests
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.notes
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.pcs
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.encounters
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.encounter_monsters
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+alter table public.waitlist_emails
+    add column if not exists updated_at timestamptz default timezone('utc'::text, now()) not null;
+-- Keep updated_at columns in sync on modification
+create or replace function public.touch_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = timezone('utc'::text, now());
+  return new;
+end;
+$$;
+
+do $$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_profiles_updated_at') then
+    create trigger set_public_profiles_updated_at
+    before update on public.profiles
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_campaigns_updated_at') then
+    create trigger set_public_campaigns_updated_at
+    before update on public.campaigns
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_campaign_members_updated_at') then
+    create trigger set_public_campaign_members_updated_at
+    before update on public.campaign_members
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_locations_updated_at') then
+    create trigger set_public_locations_updated_at
+    before update on public.locations
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_npcs_updated_at') then
+    create trigger set_public_npcs_updated_at
+    before update on public.npcs
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_quests_updated_at') then
+    create trigger set_public_quests_updated_at
+    before update on public.quests
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_notes_updated_at') then
+    create trigger set_public_notes_updated_at
+    before update on public.notes
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_pcs_updated_at') then
+    create trigger set_public_pcs_updated_at
+    before update on public.pcs
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_encounters_updated_at') then
+    create trigger set_public_encounters_updated_at
+    before update on public.encounters
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_encounter_monsters_updated_at') then
+    create trigger set_public_encounter_monsters_updated_at
+    before update on public.encounter_monsters
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'set_public_waitlist_emails_updated_at') then
+    create trigger set_public_waitlist_emails_updated_at
+    before update on public.waitlist_emails
+    for each row
+    execute function public.touch_updated_at();
+  end if;
+end
+$$;
 -- Base grants so authenticated users can access RLS-protected tables
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage on all sequences in schema public to authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public grant usage on sequences to authenticated;
+grant insert on public.waitlist_emails to anon;
+
+-- Performance indexes for common lookups
+create index if not exists campaign_members_profile_status_idx
+    on public.campaign_members (profile_id, status);
+create index if not exists campaign_members_campaign_created_idx
+    on public.campaign_members (campaign_id, created_at);
+create index if not exists locations_campaign_created_idx
+    on public.locations (campaign_id, created_at);
+create index if not exists npcs_campaign_created_idx
+    on public.npcs (campaign_id, created_at);
+create index if not exists quests_campaign_status_created_idx
+    on public.quests (campaign_id, status, created_at);
+create index if not exists notes_campaign_created_idx
+    on public.notes (campaign_id, created_at);
+create index if not exists pcs_campaign_created_idx
+    on public.pcs (campaign_id, created_at);
+create index if not exists encounters_campaign_status_created_idx
+    on public.encounters (campaign_id, status, created_at);
+create index if not exists encounter_monsters_encounter_idx
+    on public.encounter_monsters (encounter_id);
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'pcs_level_bounds') then
+    alter table public.pcs
+      add constraint pcs_level_bounds check (level between 1 and 20);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'encounters_round_positive') then
+    alter table public.encounters
+      add constraint encounters_round_positive check (round >= 1);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'encounter_monsters_hp_check') then
+    alter table public.encounter_monsters
+      add constraint encounter_monsters_hp_check check (max_hp > 0 and current_hp >= 0 and current_hp <= max_hp);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'encounter_monsters_ac_positive') then
+    alter table public.encounter_monsters
+      add constraint encounter_monsters_ac_positive check (armor_class > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'campaigns_name_not_blank') then
+    alter table public.campaigns
+      add constraint campaigns_name_not_blank check (length(btrim(name)) > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'locations_name_not_blank') then
+    alter table public.locations
+      add constraint locations_name_not_blank check (length(btrim(name)) > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'npcs_name_not_blank') then
+    alter table public.npcs
+      add constraint npcs_name_not_blank check (length(btrim(name)) > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'quests_title_not_blank') then
+    alter table public.quests
+      add constraint quests_title_not_blank check (length(btrim(title)) > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'pcs_name_not_blank') then
+    alter table public.pcs
+      add constraint pcs_name_not_blank check (length(btrim(name)) > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'encounters_name_not_blank') then
+    alter table public.encounters
+      add constraint encounters_name_not_blank check (length(btrim(name)) > 0);
+  end if;
+end
+$$;
 
 -- Profiles policies: user can see and manage their own profile
 create policy "Users can view their profile" on public.profiles
@@ -360,4 +549,3 @@ create policy "Everyone can insert waitlist" on public.waitlist_emails
     with check (true);
 create policy "Admins can read waitlist" on public.waitlist_emails
     for select using (auth.role() = 'authenticated');
-
