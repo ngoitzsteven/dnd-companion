@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { NotesSection } from "./notes-section";
+import { NotesSection } from "./notes";
 import { EmptyStateMessage, formatDateLabel, postJson, selectClassName } from "./shared";
 import type { CampaignMember, Encounter, Database } from "@/types/database";
 import type {
@@ -221,23 +221,14 @@ export function DashboardShell({
 
         <section className="grid gap-4 lg:grid-cols-2">
             {selectedCampaignId ? (
-
               <NotesSection
-
                 campaignId={selectedCampaignId}
-
                 canManage={canManageSelectedCampaign}
-
                 notes={notes}
-
                 locations={locations}
-
                 locationLookup={locationLookup}
-
                 onMutated={handleResourceMutated}
-
               />
-
             ) : (
 
               <Card className="bg-slate-900/60">
