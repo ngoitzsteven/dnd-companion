@@ -232,6 +232,10 @@ alter table public.pcs enable row level security;
 alter table public.encounters enable row level security;
 alter table public.encounter_monsters enable row level security;
 alter table public.waitlist_emails enable row level security;
+-- Base grants so authenticated users can access RLS-protected tables
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+
 -- Profiles policies: user can see and manage their own profile
 create policy "Users can view their profile" on public.profiles
     for select using (auth.uid() = id);
@@ -251,6 +255,8 @@ create policy "Managers can update campaign" on public.campaigns
 create policy "Owner can delete campaign" on public.campaigns
     for delete using (public.is_campaign_owner(campaigns.id));
 -- Campaign member policies
+create policy "Users can view their membership row" on public.campaign_members
+    for select using (campaign_members.profile_id = auth.uid());
 create policy "Members can read members" on public.campaign_members
     for select using (public.is_campaign_member(campaign_members.campaign_id));
 create policy "Managers can invite members" on public.campaign_members
@@ -354,3 +360,4 @@ create policy "Everyone can insert waitlist" on public.waitlist_emails
     with check (true);
 create policy "Admins can read waitlist" on public.waitlist_emails
     for select using (auth.role() = 'authenticated');
+
