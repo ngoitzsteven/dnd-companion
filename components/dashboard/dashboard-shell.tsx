@@ -29,7 +29,7 @@ import type {
   CampaignMemberWithProfile,
   CampaignWithRole,
   EncounterWithMonsters
-} from "./types";
+} from "@/lib/dashboard/types";
 
 interface DashboardShellProps {
   campaigns: CampaignWithRole[];
