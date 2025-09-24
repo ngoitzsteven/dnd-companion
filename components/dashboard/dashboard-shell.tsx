@@ -5,37 +5,31 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSupabaseClient } from "@supabase/auth-helpers-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { postJson } from "@/lib/api";
+import { formatDateLabel, formatRole, getTime, truncate } from "@/lib/campaign-utils";
 import { cn } from "@/lib/utils";
+import { CampaignCreateCard } from "@/components/dashboard/campaign-create-card";
+import { CampaignResourceGrid } from "@/components/dashboard/campaign-resource-grid";
+import { EmptyStateMessage } from "@/components/dashboard/empty-state-message";
+import { QuickFactCard, StatCard } from "@/components/dashboard/stat-card";
 import type {
-  Campaign,
-  CampaignMember,
-  Encounter,
-  EncounterMonster,
   Location,
   Note,
   Npc,
   Pc,
-  Profile,
   Quest,
+  CampaignMember,
   Database
 } from "@/types/database";
 
-interface CampaignWithRole extends Campaign {
-  membership_role: CampaignMember["role"];
-}
-
-interface CampaignMemberWithProfile extends CampaignMember {
-  profile: Pick<Profile, "id" | "display_name" | "email"> | null;
-}
-
-interface EncounterWithMonsters extends Encounter {
-  encounter_monsters: EncounterMonster[];
-}
-
-const selectClassName = "w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50";
+import type {
+  CampaignMemberWithProfile,
+  CampaignWithRole,
+  EncounterWithMonsters
+} from "./types";
 
 interface DashboardShellProps {
   campaigns: CampaignWithRole[];
@@ -78,6 +72,10 @@ export function DashboardShell({
   const [campaignName, setCampaignName] = useState("");
   const [campaignError, setCampaignError] = useState<string | null>(null);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isDeletingCampaign, setIsDeletingCampaign] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const toggleSidebar = () => setIsSidebarOpen((previous) => !previous);
 
@@ -142,6 +140,67 @@ export function DashboardShell({
     ? campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null
     : campaigns[0] ?? null;
 
+  const canDeleteCampaign = selectedCampaignRole === "owner" && Boolean(selectedCampaign);
+
+  const handleDeleteModalClose = () => {
+    if (isDeletingCampaign) {
+      return;
+    }
+    setIsDeleteModalOpen(false);
+    setDeleteConfirmation("");
+    setDeleteError(null);
+  };
+
+  const handleCampaignDelete = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedCampaign) {
+      setDeleteError("No campaign selected.");
+      return;
+    }
+
+    if (deleteConfirmation.trim().toLowerCase() !== "delete") {
+      setDeleteError("Type delete to confirm.");
+      return;
+    }
+
+    setIsDeletingCampaign(true);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/campaigns/${selectedCampaign.id}`, {
+        method: "DELETE"
+      });
+
+      if (!response.ok) {
+        let message = "Unable to delete campaign.";
+
+        try {
+          const data = await response.json();
+          if (data && typeof data.error === "string") {
+            message = data.error;
+          }
+        } catch {
+          // ignore body parsing errors
+        }
+
+        throw new Error(message);
+      }
+
+      setIsDeleteModalOpen(false);
+      setDeleteConfirmation("");
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      params.delete("campaign");
+      const nextQuery = params.toString();
+      router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+      router.refresh();
+    } catch (deleteCampaignError) {
+      setDeleteError(deleteCampaignError instanceof Error ? deleteCampaignError.message : "Unable to delete campaign.");
+    } finally {
+      setIsDeletingCampaign(false);
+    }
+  };
+
   const activeQuestCount = quests.filter((quest) => quest.status !== "completed").length;
   const activeEncounterCount = encounters.filter((encounter) => encounter.status !== "completed").length;
 
@@ -182,9 +241,7 @@ export function DashboardShell({
         <Card className="border border-rose-500/40 bg-rose-950/30 text-rose-100">
           <CardHeader>
             <CardTitle>Something went wrong</CardTitle>
-            <CardDescription className="text-rose-200/80">
-              {errorMessage}
-            </CardDescription>
+            <CardDescription className="text-rose-200/80">{errorMessage}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -202,8 +259,8 @@ export function DashboardShell({
           <CardHeader className="flex flex-col items-start gap-2">
             <CardTitle>No campaigns yet</CardTitle>
             <CardDescription>
-              Once you create a campaign, we&apos;ll surface your party roster, quest log, prep notes, and battle
-              encounters right here.
+              Once you create a campaign, we&apos;ll surface your party roster, quest log, prep notes, and battle encounters
+              right here.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -213,16 +270,32 @@ export function DashboardShell({
   } else {
     mainContent = (
       <div className="space-y-10">
-        <header className="space-y-2">
-          <p className="text-sm uppercase tracking-[0.15em] text-brand-light">Campaign overview</p>
-          <h1 className="text-3xl font-semibold text-white">
-            {selectedCampaign ? selectedCampaign.name : "Select a campaign"}
-          </h1>
-          {selectedCampaignRole ? (
-            <p className="text-sm text-slate-400">
-              You are set as <span className="font-medium text-slate-200">{formatRole(selectedCampaignRole)}</span> for this
-              campaign.
-            </p>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm uppercase tracking-[0.15em] text-brand-light">Campaign overview</p>
+            <h1 className="text-3xl font-semibold text-white">
+              {selectedCampaign ? selectedCampaign.name : "Select a campaign"}
+            </h1>
+            {selectedCampaignRole ? (
+              <p className="text-sm text-slate-400">
+                You are set as <span className="font-medium text-slate-200">{formatRole(selectedCampaignRole)}</span> for this
+                campaign.
+              </p>
+            ) : null}
+          </div>
+          {canDeleteCampaign ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-start border border-rose-500/60 px-4 text-rose-200 hover:bg-rose-950/60 hover:text-rose-100 focus-visible:outline-rose-500"
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteConfirmation("");
+                setIsDeleteModalOpen(true);
+              }}
+            >
+              Delete campaign
+            </Button>
           ) : null}
         </header>
 
@@ -301,9 +374,7 @@ export function DashboardShell({
                   <li key={member.id} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                     <p className="text-sm font-medium text-slate-100">{member.profile?.display_name ?? "Unnamed"}</p>
                     <p className="text-xs uppercase tracking-wide text-slate-500">{formatRole(member.role)}</p>
-                    {member.profile?.email ? (
-                      <p className="text-xs text-slate-500">{member.profile.email}</p>
-                    ) : null}
+                    {member.profile?.email ? <p className="text-xs text-slate-500">{member.profile.email}</p> : null}
                   </li>
                 ))
               )}
@@ -352,14 +423,12 @@ export function DashboardShell({
                   <li key={encounter.id} className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-slate-100">{encounter.name}</p>
-                      <span className="text-xs uppercase tracking-wide text-slate-400">{encounter.status}</span>
+                      <span className="text-xs uppercase tracking-wide text-slate-500">{encounter.status}</span>
                     </div>
-                    {encounter.summary ? (
-                      <p className="text-xs text-slate-500">{truncate(encounter.summary, 120)}</p>
-                    ) : null}
+                    {encounter.summary ? <p className="text-xs text-slate-500">{truncate(encounter.summary, 120)}</p> : null}
                     <p className="text-xs text-slate-500">
-                      {encounter.encounter_monsters.length} creature{encounter.encounter_monsters.length === 1 ? "" : "s"} |
-                      Round {encounter.round ?? "?"}
+                      {encounter.encounter_monsters.length} creature{encounter.encounter_monsters.length === 1 ? "" : "s"} | Round
+                      {encounter.round ?? "?"}
                     </p>
                   </li>
                 ))
@@ -489,1155 +558,48 @@ export function DashboardShell({
           <div className="mx-auto w-full max-w-6xl">{mainContent}</div>
         </main>
       </div>
-    </div>
-  );
-}
-
-interface StatCardProps {
-  label: string;
-  value: number;
-  description: string;
-}
-interface CampaignResourceGridProps {
-  campaignId: string;
-  canManage: boolean;
-  notes: Note[];
-  pcs: Pc[];
-  npcs: Npc[];
-  quests: Quest[];
-  locations: Location[];
-  encounters: EncounterWithMonsters[];
-  onMutated: () => void;
-}
-
-function CampaignResourceGrid({
-  campaignId,
-  canManage,
-  notes,
-  pcs,
-  npcs,
-  quests,
-  locations,
-  encounters,
-  onMutated
-}: CampaignResourceGridProps) {
-  const locationLookup = new Map(locations.map((location) => [location.id, location.name] as const));
-
-  return (
-    <div className="space-y-8">
-      <NotesSection
-        campaignId={campaignId}
-        canManage={canManage}
-        notes={notes}
-        locations={locations}
-        locationLookup={locationLookup}
-        onMutated={onMutated}
-      />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PlayerCharactersSection
-          campaignId={campaignId}
-          canManage={canManage}
-          pcs={pcs}
-          onMutated={onMutated}
-        />
-        <NpcsSection
-          campaignId={campaignId}
-          canManage={canManage}
-          npcs={npcs}
-          locations={locations}
-          locationLookup={locationLookup}
-          onMutated={onMutated}
-        />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <LocationsSection
-          campaignId={campaignId}
-          canManage={canManage}
-          locations={locations}
-          onMutated={onMutated}
-        />
-        <QuestsSection
-          campaignId={campaignId}
-          canManage={canManage}
-          quests={quests}
-          locations={locations}
-          locationLookup={locationLookup}
-          onMutated={onMutated}
-        />
-      </div>
-      <EncountersSection
-        campaignId={campaignId}
-        canManage={canManage}
-        encounters={encounters}
-        onMutated={onMutated}
-      />
-    </div>
-  );
-}
-
-interface NotesSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  notes: Note[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
-}
-
-function NotesSection({
-  campaignId,
-  canManage,
-  notes,
-  locations,
-  locationLookup,
-  onMutated
-}: NotesSectionProps) {
-  const [sessionDate, setSessionDate] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [content, setContent] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!content.trim()) {
-      setError("Add a quick summary before saving.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/notes`, {
-        content: content.trim(),
-        session_date: sessionDate || undefined,
-        location_id: locationId ? locationId : null
-      });
-
-      setSessionDate("");
-      setLocationId("");
-      setContent("");
-      onMutated();
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : "Unable to save note");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Session notes</CardTitle>
-          <CardDescription>Document what happened and what comes next.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="note-session-date" className="text-xs uppercase tracking-wide text-slate-400">
-                  Session date
-                </label>
-                <Input
-                  id="note-session-date"
-                  type="date"
-                  value={sessionDate}
-                  onChange={(event) => setSessionDate(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="note-location" className="text-xs uppercase tracking-wide text-slate-400">
-                  Location (optional)
-                </label>
-                <select
-                  id="note-location"
-                  className={selectClassName}
-                  value={locationId}
-                  onChange={(event) => setLocationId(event.target.value)}
-                  disabled={isSubmitting}
-                >
-                  <option value="">No location</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="note-content" className="text-xs uppercase tracking-wide text-slate-400">
-                Session recap
-              </label>
-              <Textarea
-                id="note-content"
-                placeholder="Summarize key events, discoveries, and hooks."
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save note"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add notes.
+      <Modal
+        open={isDeleteModalOpen}
+        onClose={handleDeleteModalClose}
+        title="Delete campaign"
+        description="This action cannot be undone."
+      >
+        <form className="space-y-4" onSubmit={handleCampaignDelete}>
+          <p className="text-sm text-slate-400">
+            Type <span className="font-semibold text-slate-200">delete</span> to remove
+            {selectedCampaign ? (
+              <>
+                {" "}
+                <span className="font-semibold text-slate-200">{selectedCampaign.name}</span>
+              </>
+            ) : (
+              " this campaign"
+            )}
+            .
           </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {notes.length === 0 ? (
-            <EmptyStateMessage message="No notes yet?log your first recap above." />
-          ) : (
-            notes.map((note) => (
-              <div key={note.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-100">{formatDateLabel(note.session_date)}</p>
-                  {note.location_id ? (
-                    <span className="text-xs uppercase tracking-wide text-slate-500">
-                      {locationLookup.get(note.location_id) ?? "Unknown location"}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="whitespace-pre-line text-sm text-slate-300">{note.content}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface PlayerCharactersSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  pcs: Pc[];
-  onMutated: () => void;
-}
-
-function PlayerCharactersSection({ campaignId, canManage, pcs, onMutated }: PlayerCharactersSectionProps) {
-  const [name, setName] = useState("");
-  const [characterClass, setCharacterClass] = useState("");
-  const [race, setRace] = useState("");
-  const [level, setLevel] = useState("1");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!name.trim()) {
-      setError("Enter a character name.");
-      return;
-    }
-
-    const levelValue = level.trim() ? Number.parseInt(level, 10) : undefined;
-
-    if (levelValue !== undefined && (Number.isNaN(levelValue) || levelValue < 1 || levelValue > 20)) {
-      setError("Level must be between 1 and 20.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/pcs`, {
-        name: name.trim(),
-        class: characterClass.trim(),
-        race: race.trim(),
-        level: levelValue
-      });
-
-      setName("");
-      setCharacterClass("");
-      setRace("");
-      setLevel("1");
-      onMutated();
-    } catch (pcError) {
-      setError(pcError instanceof Error ? pcError.message : "Unable to add character");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Player characters</CardTitle>
-          <CardDescription>Track the heroes at your table.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="pc-name" className="text-xs uppercase tracking-wide text-slate-400">
-                  Name
-                </label>
-                <Input
-                  id="pc-name"
-                  placeholder="E.g. Lyra Stonesong"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="pc-level" className="text-xs uppercase tracking-wide text-slate-400">
-                  Level
-                </label>
-                <Input
-                  id="pc-level"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={level}
-                  onChange={(event) => setLevel(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="pc-class" className="text-xs uppercase tracking-wide text-slate-400">
-                  Class
-                </label>
-                <Input
-                  id="pc-class"
-                  placeholder="Wizard, Fighter..."
-                  value={characterClass}
-                  onChange={(event) => setCharacterClass(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="pc-race" className="text-xs uppercase tracking-wide text-slate-400">
-                  Ancestry
-                </label>
-                <Input
-                  id="pc-race"
-                  placeholder="Elf, Tiefling..."
-                  value={race}
-                  onChange={(event) => setRace(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Adding..." : "Add character"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add player characters.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {pcs.length === 0 ? (
-            <EmptyStateMessage message="No characters logged yet." />
-          ) : (
-            pcs.map((pc) => {
-              const details = [pc.class ?? undefined, pc.race ?? undefined]
-                .filter(Boolean)
-                .join(" ? ");
-
-              return (
-                <div key={pc.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-slate-100">{pc.name}</p>
-                    <span className="text-xs uppercase tracking-wide text-slate-500">Level {pc.level ?? 1}</span>
-                  </div>
-                  <p className="text-xs text-slate-500">{details || "Class & ancestry pending"}</p>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface NpcsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  npcs: Npc[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
-}
-
-function NpcsSection({ campaignId, canManage, npcs, locations, locationLookup, onMutated }: NpcsSectionProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [quirks, setQuirks] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!name.trim()) {
-      setError("Enter an NPC name.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/npcs`, {
-        name: name.trim(),
-        description: description.trim(),
-        quirks: quirks.trim(),
-        location_id: locationId ? locationId : null
-      });
-
-      setName("");
-      setDescription("");
-      setQuirks("");
-      setLocationId("");
-      onMutated();
-    } catch (npcError) {
-      setError(npcError instanceof Error ? npcError.message : "Unable to add NPC");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>NPCs</CardTitle>
-          <CardDescription>Keep personalities and plot hooks handy.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="npc-name" className="text-xs uppercase tracking-wide text-slate-400">
-                Name
-              </label>
-              <Input
-                id="npc-name"
-                placeholder="E.g. Magistrate Velen"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="npc-description" className="text-xs uppercase tracking-wide text-slate-400">
-                Description
-              </label>
-              <Textarea
-                id="npc-description"
-                placeholder="Role, appearance, or motivations."
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="npc-quirks" className="text-xs uppercase tracking-wide text-slate-400">
-                Quirks (optional)
-              </label>
-              <Input
-                id="npc-quirks"
-                placeholder="E.g. speaks in rhyme, collects odd trinkets"
-                value={quirks}
-                onChange={(event) => setQuirks(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="npc-location" className="text-xs uppercase tracking-wide text-slate-400">
-                Linked location
-              </label>
-              <select
-                id="npc-location"
-                className={selectClassName}
-                value={locationId}
-                onChange={(event) => setLocationId(event.target.value)}
-                disabled={isSubmitting}
-              >
-                <option value="">No location</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Add NPC"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add NPCs.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {npcs.length === 0 ? (
-            <EmptyStateMessage message="No NPCs saved yet." />
-          ) : (
-            npcs.map((npc) => (
-              <div key={npc.id} className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-100">{npc.name}</p>
-                  {npc.location_id ? (
-                    <span className="text-xs uppercase tracking-wide text-slate-500">
-                      {locationLookup.get(npc.location_id) ?? "Unknown locale"}
-                    </span>
-                  ) : null}
-                </div>
-                {npc.description ? <p className="text-xs text-slate-500">{npc.description}</p> : null}
-                {npc.quirks ? <p className="text-xs text-slate-500">Quirks: {npc.quirks}</p> : null}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface LocationsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  locations: Location[];
-  onMutated: () => void;
-}
-
-function LocationsSection({ campaignId, canManage, locations, onMutated }: LocationsSectionProps) {
-  const [name, setName] = useState("");
-  const [typeValue, setTypeValue] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!name.trim()) {
-      setError("Name your location before saving.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/locations`, {
-        name: name.trim(),
-        type: typeValue.trim(),
-        description: description.trim()
-      });
-
-      setName("");
-      setTypeValue("");
-      setDescription("");
-      onMutated();
-    } catch (locationError) {
-      setError(locationError instanceof Error ? locationError.message : "Unable to save location");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Locations</CardTitle>
-          <CardDescription>Map key places your party visits.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="location-name" className="text-xs uppercase tracking-wide text-slate-400">
-                Name
-              </label>
-              <Input
-                id="location-name"
-                placeholder="E.g. The Gilded Griffin"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="location-type" className="text-xs uppercase tracking-wide text-slate-400">
-                Type (optional)
-              </label>
-              <Input
-                id="location-type"
-                placeholder="City, Tavern, Ruins..."
-                value={typeValue}
-                onChange={(event) => setTypeValue(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="location-description" className="text-xs uppercase tracking-wide text-slate-400">
-                Description
-              </label>
-              <Textarea
-                id="location-description"
-                placeholder="Lore, vibes, or notable NPCs."
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Add location"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add locations.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {locations.length === 0 ? (
-            <EmptyStateMessage message="No locations logged yet." />
-          ) : (
-            locations.map((location) => (
-              <div key={location.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-100">{location.name}</p>
-                  {location.type ? (
-                    <span className="text-xs uppercase tracking-wide text-slate-500">{location.type}</span>
-                  ) : null}
-                </div>
-                {location.description ? (
-                  <p className="text-xs text-slate-500">{location.description}</p>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface QuestsSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  quests: Quest[];
-  locations: Location[];
-  locationLookup: Map<string, string>;
-  onMutated: () => void;
-}
-
-function QuestsSection({ campaignId, canManage, quests, locations, locationLookup, onMutated }: QuestsSectionProps) {
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [status, setStatus] = useState<Quest["status"]>("planned");
-  const [locationId, setLocationId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const questStatuses: Array<Quest["status"]> = ["planned", "active", "completed"];
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!title.trim()) {
-      setError("Add a quest title to continue.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/quests`, {
-        title: title.trim(),
-        summary: summary.trim(),
-        status,
-        location_id: locationId ? locationId : null
-      });
-
-      setTitle("");
-      setSummary("");
-      setStatus("planned");
-      setLocationId("");
-      onMutated();
-    } catch (questError) {
-      setError(questError instanceof Error ? questError.message : "Unable to save quest");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Quest log</CardTitle>
-          <CardDescription>Outline objectives and side stories.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="quest-title" className="text-xs uppercase tracking-wide text-slate-400">
-                Title
-              </label>
-              <Input
-                id="quest-title"
-                placeholder="E.g. Rescue the River King"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="quest-summary" className="text-xs uppercase tracking-wide text-slate-400">
-                Summary
-              </label>
-              <Textarea
-                id="quest-summary"
-                placeholder="Why does this quest matter?"
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="quest-status" className="text-xs uppercase tracking-wide text-slate-400">
-                  Status
-                </label>
-                <select
-                  id="quest-status"
-                  className={selectClassName}
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value as Quest["status"])}
-                  disabled={isSubmitting}
-                >
-                  {questStatuses.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="quest-location" className="text-xs uppercase tracking-wide text-slate-400">
-                  Linked location
-                </label>
-                <select
-                  id="quest-location"
-                  className={selectClassName}
-                  value={locationId}
-                  onChange={(event) => setLocationId(event.target.value)}
-                  disabled={isSubmitting}
-                >
-                  <option value="">No location</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Add quest"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add quests.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {quests.length === 0 ? (
-            <EmptyStateMessage message="No quests logged yet." />
-          ) : (
-            quests.map((quest) => (
-              <div key={quest.id} className="space-y-1 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-100">{quest.title}</p>
-                  <span className="text-xs uppercase tracking-wide text-slate-500">{quest.status}</span>
-                </div>
-                {quest.summary ? <p className="text-xs text-slate-500">{quest.summary}</p> : null}
-                {quest.location_id ? (
-                  <p className="text-xs text-slate-500">
-                    Location: {locationLookup.get(quest.location_id) ?? "Unknown"}
-                  </p>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface EncountersSectionProps {
-  campaignId: string;
-  canManage: boolean;
-  encounters: EncounterWithMonsters[];
-  onMutated: () => void;
-}
-
-function EncountersSection({ campaignId, canManage, encounters, onMutated }: EncountersSectionProps) {
-  const [name, setName] = useState("");
-  const [summary, setSummary] = useState("");
-  const [status, setStatus] = useState<Encounter["status"]>("draft");
-  const [round, setRound] = useState("1");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const encounterStatuses: Array<Encounter["status"]> = ["draft", "active", "completed"];
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!name.trim()) {
-      setError("Name your encounter to continue.");
-      return;
-    }
-
-    const roundValue = round.trim() ? Number.parseInt(round, 10) : undefined;
-
-    if (roundValue !== undefined && (Number.isNaN(roundValue) || roundValue < 1)) {
-      setError("Set a round number of 1 or higher.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      await postJson(`/api/campaigns/${campaignId}/encounters`, {
-        name: name.trim(),
-        summary: summary.trim(),
-        status,
-        round: roundValue
-      });
-
-      setName("");
-      setSummary("");
-      setStatus("draft");
-      setRound("1");
-      onMutated();
-    } catch (encounterError) {
-      setError(encounterError instanceof Error ? encounterError.message : "Unable to save encounter");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card className="bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-1">
-        <div>
-          <CardTitle>Encounters</CardTitle>
-          <CardDescription>Prep combat and set-piece moments.</CardDescription>
-        </div>
-      </CardHeader>
-      <div className="space-y-4">
-        {canManage ? (
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="encounter-name" className="text-xs uppercase tracking-wide text-slate-400">
-                Name
-              </label>
-              <Input
-                id="encounter-name"
-                placeholder="E.g. Ambush at Dawnspire"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <label htmlFor="encounter-summary" className="text-xs uppercase tracking-wide text-slate-400">
-                Summary
-              </label>
-              <Textarea
-                id="encounter-summary"
-                placeholder="Victory conditions, enemy tactics, terrain twists."
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 text-sm">
-                <label htmlFor="encounter-status" className="text-xs uppercase tracking-wide text-slate-400">
-                  Status
-                </label>
-                <select
-                  id="encounter-status"
-                  className={selectClassName}
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value as Encounter["status"])}
-                  disabled={isSubmitting}
-                >
-                  {encounterStatuses.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1 text-sm">
-                <label htmlFor="encounter-round" className="text-xs uppercase tracking-wide text-slate-400">
-                  Current round
-                </label>
-                <Input
-                  id="encounter-round"
-                  type="number"
-                  min={1}
-                  value={round}
-                  onChange={(event) => setRound(event.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </div>
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Add encounter"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="rounded-md border border-dashed border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-            Only campaign owners and co-DMs can add encounters.
-          </p>
-        )}
-        <div className="space-y-3 text-sm text-slate-300">
-          {encounters.length === 0 ? (
-            <EmptyStateMessage message="No encounters prepped yet." />
-          ) : (
-            encounters.map((encounter) => (
-              <div key={encounter.id} className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-100">{encounter.name}</p>
-                  <span className="text-xs uppercase tracking-wide text-slate-500">{encounter.status}</span>
-                </div>
-                {encounter.summary ? <p className="text-xs text-slate-500">{encounter.summary}</p> : null}
-                <p className="text-xs text-slate-500">
-                  {encounter.encounter_monsters.length} creature{encounter.encounter_monsters.length === 1 ? "" : "s"} ? Round {encounter.round ?? 1}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-interface CampaignCreateCardProps {
-  isOpen: boolean;
-  hasCampaigns: boolean;
-  name: string;
-  onNameChange: (value: string) => void;
-  onToggle: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  isSubmitting: boolean;
-  error: string | null;
-}
-
-function CampaignCreateCard({
-  isOpen,
-  hasCampaigns,
-  name,
-  onNameChange,
-  onToggle,
-  onSubmit,
-  isSubmitting,
-  error
-}: CampaignCreateCardProps) {
-  return (
-    <Card className="border border-slate-800/80 bg-slate-900/60">
-      <CardHeader className="mb-4 flex-col items-start gap-3">
-        <div className="space-y-1">
-          <CardTitle>Start a new campaign</CardTitle>
-          <CardDescription>
-            {hasCampaigns
-              ? "Spin up another world to organise quests, notes, and NPCs."
-              : "Give your table a shared home for quests, notes, and NPCs."}
-          </CardDescription>
-        </div>
-        <Button
-          type="button"
-          onClick={onToggle}
-          variant={isOpen ? "secondary" : "primary"}
-          size="sm"
-          disabled={isSubmitting}
-        >
-          {isOpen ? "Cancel" : "New campaign"}
-        </Button>
-      </CardHeader>
-      {isOpen ? (
-        <form className="space-y-3" onSubmit={onSubmit}>
-          <div className="space-y-1 text-sm">
-            <label htmlFor="campaign-name" className="text-xs uppercase tracking-wide text-slate-400">
-              Campaign name
-            </label>
-            <Input
-              id="campaign-name"
-              placeholder="E.g. The Starfall Expedition"
-              value={name}
-              onChange={(event) => onNameChange(event.target.value)}
-              disabled={isSubmitting}
-            />
-          </div>
-          {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-          <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create campaign"}
+          <Input
+            value={deleteConfirmation}
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+            onPaste={(event) => event.preventDefault()}
+            placeholder="delete"
+            autoFocus
+            disabled={isDeletingCampaign}
+          />
+          {deleteError ? <p className="text-xs text-rose-400">{deleteError}</p> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={handleDeleteModalClose} disabled={isDeletingCampaign}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-rose-600 text-white hover:bg-rose-500 focus-visible:outline-rose-500"
+              disabled={isDeletingCampaign}
+            >
+              {isDeletingCampaign ? "Deleting..." : "Delete"}
             </Button>
           </div>
         </form>
-      ) : null}
-    </Card>
+      </Modal>
+    </div>
   );
 }
-
-async function postJson<T = unknown>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    let message = "Unexpected error";
-
-    try {
-      const data = await response.json();
-      if (data && typeof data.error === "string") {
-        message = data.error;
-      }
-    } catch {
-      // ignore body parsing errors
-    }
-
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
-}
-
-
-function StatCard({ label, value, description }: StatCardProps) {
-  return (
-    <Card>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-sm font-medium uppercase tracking-wide text-slate-400">{label}</CardTitle>
-        <p className="text-3xl font-semibold text-white">{value}</p>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-    </Card>
-  );
-}
-
-interface QuickFactCardProps {
-  label: string;
-  value: number;
-}
-
-function QuickFactCard({ label, value }: QuickFactCardProps) {
-  return (
-    <Card className="bg-slate-900/50">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-sm font-medium uppercase tracking-wide text-slate-400">{label}</CardTitle>
-        <p className="text-2xl font-semibold text-white">{value}</p>
-      </CardHeader>
-    </Card>
-  );
-}
-
-interface EmptyStateMessageProps {
-  message: string;
-}
-
-function EmptyStateMessage({ message }: EmptyStateMessageProps) {
-  return (
-    <p className="rounded-lg border border-dashed border-slate-800 bg-slate-900/40 p-4 text-center text-sm text-slate-500">
-      {message}
-    </p>
-  );
-}
-
-function truncate(value: string, maxLength: number) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, maxLength).trimEnd()}...`;
-}
-
-function formatDateLabel(value: string | null) {
-  if (!value) {
-    return "Date pending";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  });
-}
-
-function formatRole(role: CampaignMember["role"]) {
-  return role
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function getTime(value: string) {
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
