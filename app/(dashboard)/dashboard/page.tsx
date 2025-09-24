@@ -64,9 +64,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const {
 
-    data: { user }
+    data: { session }
 
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+
+  const user = session?.user;
 
 
 
@@ -375,5 +377,3 @@ function formatMembershipErrorMessage(error: PostgrestError) {
   return error.message ?? "We couldn't load your campaign memberships. Please try again.";
 
 }
-
-

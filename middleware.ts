@@ -9,21 +9,10 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const {
-    data: { session: initialSession }
+    data: { session }
   } = await supabase.auth.getSession();
 
-  let hasValidUser = false;
-
-  if (initialSession) {
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser();
-
-    if (user && !error) {
-      hasValidUser = true;
-    }
-  }
+  const hasValidUser = Boolean(session?.user);
 
   if (!hasValidUser && req.nextUrl.pathname.startsWith("/dashboard")) {
     const redirectUrl = req.nextUrl.clone();

@@ -34,23 +34,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const supabase = await getServerSupabaseClient();
 
-  const [
+  const {
 
-    {
+    data: { session }
 
-      data: { session }
-
-    },
-
-    {
-
-      data: { user }
-
-    }
-
-  ] = await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
-
-  const initialSession = session && user ? { ...session, user } : null;
+  } = await supabase.auth.getSession();
 
 
 
@@ -60,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
       <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100`} suppressHydrationWarning>
 
-        <SupabaseProvider initialSession={initialSession}>{children}</SupabaseProvider>
+        <SupabaseProvider initialSession={session}>{children}</SupabaseProvider>
 
       </body>
 
@@ -69,5 +57,3 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   );
 
 }
-
-
