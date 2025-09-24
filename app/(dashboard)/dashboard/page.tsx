@@ -34,9 +34,11 @@ import type {
 
 
 
+type DashboardSearchParams = Record<string, string | string[] | undefined>;
+
 interface DashboardPageProps {
 
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: DashboardSearchParams | Promise<DashboardSearchParams>;
 
 }
 
@@ -56,7 +58,9 @@ type EncounterWithMonsters = Encounter & { encounter_monsters: EncounterMonster[
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
 
-  const supabase = getServerSupabaseClient();
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+
+  const supabase = await getServerSupabaseClient();
 
   const {
 
@@ -176,11 +180,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
 
 
-  const requestedCampaign = Array.isArray(searchParams?.campaign)
+  const requestedCampaign = Array.isArray(resolvedSearchParams?.campaign)
 
-    ? searchParams?.campaign[0]
+    ? resolvedSearchParams?.campaign[0]
 
-    : searchParams?.campaign;
+    : resolvedSearchParams?.campaign;
 
 
 
@@ -371,4 +375,5 @@ function formatMembershipErrorMessage(error: PostgrestError) {
   return error.message ?? "We couldn't load your campaign memberships. Please try again.";
 
 }
+
 

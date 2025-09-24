@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = getRouteHandlerSupabaseClient();
+  const supabase = await getRouteHandlerSupabaseClient();
   const { data, error } = await supabase
     .from("waitlist_emails")
     .upsert({ email: parseResult.data.email })
@@ -38,3 +38,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ id: data.id });
 }
+

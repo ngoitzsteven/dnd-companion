@@ -19,7 +19,7 @@ interface AuthFailure {
 export type AuthResult = AuthSuccess | AuthFailure;
 
 export async function requireUser(): Promise<AuthResult> {
-  const supabase = getRouteHandlerSupabaseClient();
+  const supabase = await getRouteHandlerSupabaseClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -42,3 +42,4 @@ export async function requireUser(): Promise<AuthResult> {
 
   return { supabase, user };
 }
+
