@@ -2,7 +2,7 @@
 
 import type { Location, Note, Npc, Pc, Quest } from "@/types/database";
 
-import type { EncounterWithMonsters } from "./types";
+import type { EncounterWithMonsters } from "@/lib/dashboard/types";
 import { EncountersSection } from "./sections/encounters-section";
 import { LocationsSection } from "./sections/locations-section";
 import { NpcsSection } from "./sections/npcs-section";
