@@ -18,18 +18,19 @@ interface AuthFailure {
 
 export type AuthResult = AuthSuccess | AuthFailure;
 
-export async function requireUser(): Promise<AuthResult> {
-  const supabase = await getRouteHandlerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      supabase,
-      user: null,
-      errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    };
+export async function requireUser(): Promise<AuthResult> {
+  const supabase = await getRouteHandlerSupabaseClient();
+  const {
+    data: { session }
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
+
+  if (!user) {
+    return {
+      supabase,
+      user: null,
+      errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    };
   }
 
   const profileUpsert = {

@@ -28,15 +28,14 @@ export function LoginForm() {
         password
       });
 
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
-
-      router.push(redirectTo);
-      router.refresh();
-    });
-  };
+      if (authError) {
+        setError(authError.message);
+        return;
+      }
+
+      router.push(redirectTo);
+    });
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
