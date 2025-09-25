@@ -6,7 +6,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { EmptyStateMessage } from "../shared";
 import { NoteList } from "./note-list";
 import { NoteModal } from "./note-modal";
-import { useNotes } from "./hooks/use-notes";
+import { useNotes, useNotesRealtime } from "./hooks/use-notes";
 import { NotesService } from "./notes-service";
 import type { NotesProps, NotesState } from "./types";
 import type { Note } from "./domain/note";
@@ -14,12 +14,11 @@ import type { Note } from "./domain/note";
 export function NotesSection({
   campaignId,
   canManage,
-  notes,
   locations,
-  locationLookup,
-  onMutated
-}: NotesProps) {
-  const { notesService, sortedNotes } = useNotes(campaignId, notes);
+  locationLookup
+}: Omit<NotesProps, 'notes' | 'onMutated'>) {
+  const { notes: sortedNotes, isLoading, createNote, updateNote, deleteNote, notesService } = useNotes(campaignId);
+  useNotesRealtime(campaignId);
   const [state, setState] = useState<NotesState>({
     sessionDate: NotesService.getToday(),
     locationId: "",
@@ -87,15 +86,17 @@ export function NotesSection({
 
     try {
       if (state.editingNote) {
-        await notesService.updateNote(state.editingNote.id, {
-          ...payload,
-          session_date: normalizedSessionDate || ""
+        updateNote({
+          noteId: state.editingNote.id,
+          payload: {
+            ...payload,
+            session_date: normalizedSessionDate || ""
+          }
         });
       } else {
-        await notesService.createNote(payload);
+        createNote(payload);
       }
 
-      onMutated();
       closeModal();
     } catch (noteError) {
       setState(prev => ({
@@ -113,14 +114,8 @@ export function NotesSection({
     }
 
     setState(prev => ({ ...prev, deletingNoteId: noteId }));
-    try {
-      await notesService.deleteNote(noteId);
-      onMutated();
-    } catch (deleteError) {
-      alert(deleteError instanceof Error ? deleteError.message : "Unable to delete note");
-    } finally {
-      setState(prev => ({ ...prev, deletingNoteId: null }));
-    }
+    deleteNote(noteId);
+    setState(prev => ({ ...prev, deletingNoteId: null }));
   };
 
   const toggleShowAll = () => {

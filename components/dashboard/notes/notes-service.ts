@@ -1,9 +1,14 @@
 import { deleteJson, patchJson, postJson } from "../shared";
 import type { Note, NoteCreatePayload, NoteUpdatePayload } from "./domain/note";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import debounce from 'lodash.debounce';
 
 export class NotesService {
+  private debouncedUpdate: ReturnType<typeof debounce>;
+  
   constructor(private readonly campaignId: string) {
     if (!campaignId?.trim()) throw new Error('Campaign ID is required');
+    this.debouncedUpdate = debounce(this.updateNoteImmediate.bind(this), 1000);
   }
 
   async createNote(payload: NoteCreatePayload): Promise<void> {
@@ -16,12 +21,24 @@ export class NotesService {
   }
 
   async updateNote(noteId: string, payload: NoteUpdatePayload): Promise<void> {
+    this.debouncedUpdate(noteId, payload);
+  }
+
+  private async updateNoteImmediate(noteId: string, payload: NoteUpdatePayload): Promise<void> {
     if (!noteId?.trim()) throw new Error('Note ID is required');
     if (!payload?.content?.trim()) throw new Error('Note content is required');
     try {
       await patchJson(`/api/campaigns/${this.campaignId}/notes/${noteId}`, payload);
     } catch (error) {
       throw new Error(`Failed to update note: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async bulkUpdateNotes(updates: Array<{id: string, payload: NoteUpdatePayload}>): Promise<void> {
+    try {
+      await postJson(`/api/campaigns/${this.campaignId}/notes/bulk`, { updates });
+    } catch (error) {
+      throw new Error(`Failed to bulk update notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

@@ -11,6 +11,7 @@ import { Inter } from "next/font/google";
 import { getServerSupabaseClient } from "@/lib/supabaseServer";
 
 import { SupabaseProvider } from "@/components/providers/supabase-provider";
+import { QueryProvider } from "@/components/providers/query-provider";
 
 
 
@@ -60,7 +61,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
       <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100`} suppressHydrationWarning>
 
-        <SupabaseProvider initialSession={initialSession}>{children}</SupabaseProvider>
+        <SupabaseProvider initialSession={initialSession}>
+          <QueryProvider>{children}</QueryProvider>
+        </SupabaseProvider>
 
       </body>
 
